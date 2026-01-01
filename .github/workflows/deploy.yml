@@ -1,0 +1,56 @@
+name: Deploy Leaderboard Computer to Lambda
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  LAMBDA_FUNCTION_NAME: ClubbCdkStack-LeaderboardComputer
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v5.1.1
+        with:
+          aws-region: ${{ secrets.AWS_REGION }}
+          role-to-assume: arn:aws:iam::225326315224:role/github-ci-cd-role
+
+      - name: Build Lambda function
+        run: |
+          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -tags lambda.norpc -o bootstrap main.go
+          zip bootstrap.zip bootstrap
+
+      - name: Deploy to Lambda
+        run: |
+          aws lambda update-function-code \
+            --function-name $LAMBDA_FUNCTION_NAME \
+            --zip-file fileb://bootstrap.zip \
+            --region $AWS_REGION
+
+      - name: Wait for update to complete
+        run: |
+          aws lambda wait function-updated \
+            --function-name $LAMBDA_FUNCTION_NAME \
+            --region $AWS_REGION
+
+      - name: Publish new version
+        run: |
+          aws lambda publish-version \
+            --function-name $LAMBDA_FUNCTION_NAME \
+            --region $AWS_REGION
