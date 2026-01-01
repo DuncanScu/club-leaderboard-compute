@@ -5,8 +5,8 @@ This Lambda function computes leaderboards for clubs and users on a scheduled ba
 ## Architecture
 
 - **Trigger**: EventBridge scheduled event (every 5 minutes)
-- **Runtime**: Go 1.23 (custom runtime)
-- **Deployment**: GitHub Actions (automatic on push to main)
+- **Runtime**: Go 1.23 (Docker container)
+- **Deployment**: GitHub Actions → ECR → Lambda
 - **Database**: PostgreSQL (Aurora) via VPC
 
 ## What It Does
@@ -31,20 +31,21 @@ Results are stored in snapshot tables:
 
 ### Prerequisites
 - Go 1.23 or higher
+- Docker
 - AWS CLI configured
 - Access to the Aurora database
 
 ### Building
 
 ```bash
-# Build for local testing
-go build -o leaderboard-computer main.go
-
-# Build for Lambda deployment
+# Build Go binary locally
 make build
 
-# Create deployment package
-make zip
+# Build Docker image
+make docker-build
+
+# Run Docker container locally
+make docker-run
 ```
 
 ### Testing Locally
@@ -53,15 +54,14 @@ make zip
 # Run tests
 make test
 
-# Set up environment variables
-export DB_HOST=localhost
-export DB_PORT=5432
-export DB_USER=postgres
-export DB_PASSWORD=your-password
-export DB_NAME=clubb
-
-# Run locally
-go run main.go
+# Run with Docker
+docker run --rm \
+  -e DB_HOST=localhost \
+  -e DB_PORT=5432 \
+  -e DB_USER=postgres \
+  -e DB_PASSWORD=your-password \
+  -e DB_NAME=clubb \
+  leaderboard-computer:latest
 ```
 
 ## Deployment
@@ -71,24 +71,33 @@ go run main.go
 Deployment happens automatically via GitHub Actions when you push to the `main` branch:
 
 1. Push your changes to `main`
-2. GitHub Actions workflow builds the Go binary
-3. Creates a ZIP package
-4. Deploys to AWS Lambda
-5. Publishes a new Lambda version
+2. GitHub Actions workflow builds Docker image
+3. Pushes image to ECR with tags:
+   - `latest`
+   - Git commit SHA
+4. Lambda automatically pulls the new `latest` image on next invocation
+
+**Workflow file**: `.github/workflows/publish-ecr.yml`
 
 ### Manual Deployment
 
 If you need to deploy manually:
 
 ```bash
-# Build and create ZIP
-make zip
+# Build Docker image
+docker build -t leaderboard-computer:latest .
 
-# Deploy using AWS CLI
+# Tag for ECR
+aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin <account-id>.dkr.ecr.us-east-1.amazonaws.com
+docker tag leaderboard-computer:latest <account-id>.dkr.ecr.us-east-1.amazonaws.com/leaderboard-computer:latest
+
+# Push to ECR
+docker push <account-id>.dkr.ecr.us-east-1.amazonaws.com/leaderboard-computer:latest
+
+# Update Lambda (optional - Lambda pulls automatically)
 aws lambda update-function-code \
   --function-name ClubbCdkStack-LeaderboardComputer \
-  --zip-file fileb://bootstrap.zip \
-  --region us-east-1
+  --image-uri <account-id>.dkr.ecr.us-east-1.amazonaws.com/leaderboard-computer:latest
 ```
 
 ## Configuration
@@ -104,6 +113,7 @@ Environment variables (set by CDK):
 - **CloudWatch Logs**: `/aws/lambda/ClubbCdkStack-LeaderboardComputer`
 - **Metrics**: Lambda metrics in CloudWatch
 - **Schedule**: EventBridge rule `LeaderboardComputeSchedule`
+- **ECR Repository**: `leaderboard-computer`
 
 ## Troubleshooting
 
@@ -119,8 +129,13 @@ Environment variables (set by CDK):
 
 ### Failed deployments
 - Check GitHub Actions logs
-- Verify IAM role has Lambda update permissions
-- Ensure function name matches in workflow
+- Verify IAM role has ECR push permissions
+- Ensure ECR repository exists and Lambda has pull permissions
+
+### Image not updating
+- Lambda may cache the image
+- Force update with `aws lambda update-function-code`
+- Check ECR for latest image tag
 
 ## Dependencies
 

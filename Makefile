@@ -1,17 +1,22 @@
-.PHONY: build clean zip deploy
+.PHONY: build clean test docker-build docker-run
 
 build:
-	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -tags lambda.norpc -o bootstrap main.go
+	go build -o leaderboard-computer main.go
 
 clean:
-	rm -f bootstrap bootstrap.zip
+	rm -f leaderboard-computer
 
-zip: build
-	zip bootstrap.zip bootstrap
+docker-build:
+	docker build -t leaderboard-computer:latest .
 
-deploy: zip
-	@echo "Deployment is handled by GitHub Actions"
-	@echo "To deploy manually, use: aws lambda update-function-code --function-name <function-name> --zip-file fileb://bootstrap.zip"
+docker-run: docker-build
+	docker run --rm \
+		-e DB_HOST=${DB_HOST} \
+		-e DB_PORT=${DB_PORT} \
+		-e DB_USER=${DB_USER} \
+		-e DB_PASSWORD=${DB_PASSWORD} \
+		-e DB_NAME=${DB_NAME} \
+		leaderboard-computer:latest
 
 test:
 	go test -v ./...

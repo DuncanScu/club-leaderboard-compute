@@ -4,6 +4,7 @@
 *.dll
 *.so
 *.dylib
+leaderboard-computer
 
 # Test binary, built with `go test -c`
 *.test
@@ -13,10 +14,6 @@
 
 # Go workspace file
 go.work
-
-# Lambda bootstrap binary
-bootstrap
-bootstrap.zip
 
 # IDE
 .vscode/
