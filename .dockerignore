@@ -1,0 +1,7 @@
+.git
+.github
+*.md
+*.zip
+.dockerignore
+Dockerfile
+docker-compose.yml
