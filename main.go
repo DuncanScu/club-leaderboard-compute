@@ -115,9 +115,25 @@ func getDBCredentials(ctx context.Context, secretArn string) (map[string]string,
 		return nil, err
 	}
 
-	var creds map[string]string
-	if err := json.Unmarshal([]byte(*result.SecretString), &creds); err != nil {
+	// Unmarshal into interface{} first since port is a number
+	var rawCreds map[string]interface{}
+	if err := json.Unmarshal([]byte(*result.SecretString), &rawCreds); err != nil {
 		return nil, err
+	}
+
+	// Convert all values to strings
+	creds := make(map[string]string)
+	for key, value := range rawCreds {
+		switch v := value.(type) {
+		case string:
+			creds[key] = v
+		case float64:
+			creds[key] = fmt.Sprintf("%.0f", v)
+		case int:
+			creds[key] = fmt.Sprintf("%d", v)
+		default:
+			creds[key] = fmt.Sprintf("%v", v)
+		}
 	}
 
 	return creds, nil
